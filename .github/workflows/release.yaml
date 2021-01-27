@@ -178,38 +178,23 @@ jobs:
           echo "Creating release ${RELEASE_TAG}"
           git tag ${RELEASE_TAG}
 
-      - name: Build Docker image for release
-        run: |
-          set -ue
-          git clean -fd
-          mkdir -p dist/
-          make image IMAGE_TAG="${TARGET_VERSION}" DOCKER_PUSH=false
-          make release-cli
-          chmod +x ./dist/argocd-linux-amd64
-          ./dist/argocd-linux-amd64 version --client
-        if: ${{ env.DRY_RUN != 'true' }}
-
-      - name: Push docker image to repository
-        env:
-          DOCKER_USERNAME: ${{ secrets.RELEASE_DOCKERHUB_USERNAME }}
-          DOCKER_TOKEN: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
-        run: |
-          set -ue
-          docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_TOKEN}"
-          docker push ${IMAGE_NAMESPACE}/argocd:v${TARGET_VERSION}
-        if: ${{ env.DRY_RUN != 'true' }}
-
-      - name: Read release notes file
-        id: release-notes
-        uses: juliangruber/read-file-action@v1
-        with: 
-          path: ${{ env.RELEASE_NOTES }}
-
       - name: Push changes to release branch
         run: |
           set -ue
           git push origin ${TARGET_BRANCH}
           git push origin ${RELEASE_TAG}
+
+      - name: Delete original request tag from repository
+        run: |
+          set -ue
+          git push --delete origin ${SOURCE_TAG}
+        if: ${{ always() }}
+
+      - name: Read release notes file
+        id: release-notes
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: ${{ env.RELEASE_NOTES }}
 
       - name: Create GitHub release
         uses: actions/create-release@v1
@@ -223,6 +208,91 @@ jobs:
           prerelease: ${{ env.PRE_RELEASE }}
           body: ${{ steps.release-notes.outputs.content }}
 
+      - name: Prepare environment artifact
+        env:
+          RELEASE_URL: ${{ steps.create_release.outputs.upload_url }}
+        run: |
+          set -ue
+          echo "RELEASE_URL=${RELEASE_URL}" >> artifact_env
+          echo "TARGET_VERSION=${TARGET_VERSION}" >> artifact_env
+          echo "TARGET_BRANCH=${TARGET_BRANCH}" >> artifact_env
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> artifact_env
+
+      - name: Upload environment artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: env-artifact
+          path: artifact_env
+
+  release-amd64:
+    name: Release for amd64 architecture
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-release
+    env:
+      # The image namespace where Docker image will be published to
+      IMAGE_NAMESPACE: argoproj
+      # Whether to create & push image and release assets
+      DRY_RUN: false
+      # Whether a draft release should be created, instead of public one
+      DRAFT_RELEASE: false
+      # Whether to update homebrew with this release as well
+      # Set RELEASE_HOMEBREW_TOKEN secret in repository for this to work - needs
+      # access to public repositories
+      UPDATE_HOMEBREW: false
+      # Name of the GitHub user for Git config
+      GIT_USERNAME: argo-bot
+      # E-Mail of the GitHub user for Git config
+      GIT_EMAIL: argoproj@gmail.com
+    steps:
+      - name: Download environment artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: env-artifact
+
+      - name: Setup environment from artifact
+        run: |
+          set -ue
+          cat artifact_env >> ${GITHUB_ENV}
+          rm artifact_env
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout corresponding release branch
+        run: |
+          set -ue
+          echo "Switching to release branch '${TARGET_BRANCH}'"
+          if ! git checkout ${TARGET_BRANCH}; then
+            echo "::error::Checking out release branch '${TARGET_BRANCH}' for target version '${TARGET_VERSION}' (tagged '${RELEASE_TAG}') failed. Does it exist in repo?"
+            exit 1
+          fi
+
+      - name: Build Docker image for release
+        run: |
+          set -ue
+          git clean -fd
+          mkdir -p dist/
+          make image IMAGE_TAG="${TARGET_VERSION}" DOCKER_PUSH=false
+          make release-cli
+          chmod +x ./dist/argocd-linux-amd64
+          ./dist/argocd-linux-amd64 version --client
+        if: ${{ env.DRY_RUN != 'true' }}
+            #
+            #      - name: Push docker image to repository
+            #        env:
+            #          DOCKER_USERNAME: ${{ secrets.RELEASE_DOCKERHUB_USERNAME }}
+            #          DOCKER_TOKEN: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+            #        run: |
+            #          set -ue
+            #          docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_TOKEN}"
+            #          docker push ${IMAGE_NAMESPACE}/argocd:v${TARGET_VERSION}
+            #        if: ${{ env.DRY_RUN != 'true' }}
+            #
+            #
       - name: Upload argocd-linux-amd64 binary to release assets
         uses: actions/upload-release-asset@v1
         env:
@@ -255,18 +325,13 @@ jobs:
           asset_name: argocd-windows-amd64.exe
           asset_content_type: application/octet-stream
         if: ${{ env.DRY_RUN != 'true' }}
+            #
+            #      - name: Update homebrew formula
+            #        env:
+            #          HOMEBREW_TOKEN: ${{ secrets.RELEASE_HOMEBREW_TOKEN }}
+            #        uses: dawidd6/action-homebrew-bump-formula@v3
+            #        with:
+            #          token: ${{env.HOMEBREW_TOKEN}}
+            #          formula: argocd
+            #        if: ${{ env.HOMEBREW_TOKEN != '' && env.UPDATE_HOMEBREW == 'true' && env.PRE_RELEASE != 'true' }}
 
-      - name: Update homebrew formula
-        env:
-          HOMEBREW_TOKEN: ${{ secrets.RELEASE_HOMEBREW_TOKEN }}
-        uses: dawidd6/action-homebrew-bump-formula@v3
-        with:
-          token: ${{env.HOMEBREW_TOKEN}}
-          formula: argocd
-        if: ${{ env.HOMEBREW_TOKEN != '' && env.UPDATE_HOMEBREW == 'true' && env.PRE_RELEASE != 'true' }}
-
-      - name: Delete original request tag from repository
-        run: |
-          set -ue
-          git push --delete origin ${SOURCE_TAG}
-        if: ${{ always() }}
