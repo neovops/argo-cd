@@ -286,12 +286,17 @@ jobs:
           tag_suffix=$(echo $PLATFORM | sed -r "s/\//-/g")
           IMAGE_NAME="quay.io/neovops/argocd:${RELEASE_TAG}-${tag_suffix}" #TODO: remove quay
 
+          BUILD_ALL_CLIS=false
+          if [ ${PLATFORM}="linux/amd64" ]; then
+            BUILD_ALL_CLIS=true
+          fi
+
           docker buildx build \
             --cache-from "type=local,src=/tmp/.buildx-cache" \
             --cache-to "type=local,dest=/tmp/.buildx-cache" \
             --output "type=image,push=true" \
             --platform="${PLATFORM}" \
-            --build-arg BUILD_ALL_CLIS="false" \
+            --build-arg BUILD_ALL_CLIS="${BUILD_ALL_CLIS}" \
             --tag $IMAGE_NAME .
 
           # Also output to "docker" to retrieve argocd binaries
@@ -300,7 +305,7 @@ jobs:
             --cache-to "type=local,dest=/tmp/.buildx-cache" \
             --output "type=docker" \
             --platform="${PLATFORM}" \
-            --build-arg BUILD_ALL_CLIS="false" \
+            --build-arg BUILD_ALL_CLIS="${BUILD_ALL_CLIS}" \
             --tag $IMAGE_NAME .
 
           echo "IMAGE_NAME=${IMAGE_NAME}" >> ${GITHUB_ENV}
