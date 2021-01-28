@@ -292,6 +292,7 @@ jobs:
             --cache-to "type=local,dest=/tmp/.buildx-cache" \
             --output "type=image,push=true" \
             --platform="linux/${PLATFORM}" \
+            --build-arg BUILD_ALL_CLIS="false" \
             --tag $image_name .
 
             #      - name: Build Docker image for release
