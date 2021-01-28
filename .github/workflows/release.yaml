@@ -328,7 +328,7 @@ jobs:
         if: ${{ env.DRY_RUN != 'true' }}
 
 
-      - name: Upload ${{ env.LINUX_FILE_NAME }} binary to release assets
+      - name: Upload linux binary to release assets
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -348,7 +348,7 @@ jobs:
           asset_path: ./dist/argocd-darwin-amd64
           asset_name: argocd-darwin-amd64
           asset_content_type: application/octet-stream
-        if: ${{ env.DRY_RUN != 'true' && matrix.platform == 'amd64'}}
+        if: ${{ env.DRY_RUN != 'true' && matrix.platform == 'linux/amd64'}}
 
       - name: Upload argocd-windows-amd64 binary to release assets
         uses: actions/upload-release-asset@v1
@@ -359,7 +359,7 @@ jobs:
           asset_path: ./dist/argocd-windows-amd64.exe
           asset_name: argocd-windows-amd64.exe
           asset_content_type: application/octet-stream
-        if: ${{ env.DRY_RUN != 'true' && matrix.platform == 'amd64'}}
+        if: ${{ env.DRY_RUN != 'true' && matrix.platform == 'linux/amd64'}}
 
       - name: Update homebrew formula
         env:
@@ -368,5 +368,5 @@ jobs:
         with:
           token: ${{env.HOMEBREW_TOKEN}}
           formula: argocd
-        if: ${{ env.HOMEBREW_TOKEN != '' && env.UPDATE_HOMEBREW == 'true' && env.PRE_RELEASE != 'true' }}
+        if: ${{ env.HOMEBREW_TOKEN != '' && env.UPDATE_HOMEBREW == 'true' && env.PRE_RELEASE != 'true' && matrix.platform == 'linux/amd64' }}
 
